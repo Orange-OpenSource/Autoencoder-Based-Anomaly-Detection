@@ -2,6 +2,8 @@
 from utility_classes import lstmObjts
 from utility_classes import predictRes
 import pre_processing
+import bokeh_plotting
+
 import logging
 import os
 import pickle
@@ -253,7 +255,7 @@ for idx, e in enumerate(groupsRegex_phy):
 
 
 ## Compute scoreds, errorDfSquare and predicted for the TEST phase for each AEs.
-# Details about obj variables is given for the Training 
+# Details about obj variables is given for the Training
 predictedsRes_ca = []
 predictedsRes_phy = []
 
@@ -281,3 +283,7 @@ for idx, e in enumerate(lstmDatasetsTest_phy):
                                predictedsResTrain_phy[idx].scored['Threshold1'][0])
     # scored_test_x.set_index(df2.index[0:df2.shape[0] - 2], inplace=True)
     predictedsRes_phy.append(predictRes(scored_test_x, errorDfSquare_test_x, predicted))
+
+
+
+plot_in_bokeh_2Axis(to_test+'mixed',predictedsRes_phy,predictedsRes_ca)
