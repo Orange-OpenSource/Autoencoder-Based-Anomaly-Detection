@@ -1,8 +1,14 @@
 from bokeh.models import LinearAxis, Range1d, Label
 from bokeh.plotting import figure, output_file, save
-from bokeh.models import Span
+from bokeh.models import Span ,ColorBar, LinearColorMapper, BasicTicker
 from bokeh.layouts import gridplot
+import  numpy as np
+from sklearn.preprocessing import MinMaxScaler
+from scipy import stats
+import matplotlib.cm as cm
+import matplotlib.colors as clr
 
+##Plots 8 AEs MSE as 4 figures in 1 bokeh html. Each plot contains both phy and virt for a given resource
 def plot_in_bokeh_2Axis(out_file,predictedCa,predictedPhy):
     # output to static HTML file
     output_file(out_file + ".html")
@@ -148,3 +154,93 @@ def plot_in_bokeh_2Axis(out_file,predictedCa,predictedPhy):
     p3.legend.location = "top_left"
     grid = gridplot([[p0, p1], [p2, p3]], plot_width=1000, plot_height=620)
     save(grid)
+
+## Plots phyVsVirt radiography in bokeh
+def plot_phy_virt_radio(scoredCa, scoredPhy, typeM,testCase):
+    if scoredCa.shape[0] > scoredPhy.shape[0]:
+        mse_ca_out = scoredCa.iloc[:scoredPhy.shape[0], 0]  # MSE until failedCall length
+        y = mse_ca_out.values
+        x = scoredPhy['Loss_mae'].values
+    else:
+        mse_phy_out = scoredPhy.iloc[:scoredCa.shape[0], 0]  # MSE until failedCall length
+        x = mse_phy_out.values
+        y = scoredCa['Loss_mae'].values
+    sclr = MinMaxScaler()
+    x = np.asarray(sclr.fit_transform(x.reshape(-1, 1)), dtype=np.float64).reshape(x.shape[0])
+    xThresh = sclr.transform(np.asarray(scoredPhy['Threshold1'][0]).reshape(-1, 1))
+    y = np.asarray(sclr.fit_transform(y.reshape(-1, 1)), dtype=np.float64).reshape(y.shape[0])
+    yThresh = sclr.transform(np.asarray(scoredCa['Threshold1'][0]).reshape(-1, 1))
+    xmax = x.max()
+    ymax = y.max()
+    X, Y = np.mgrid[0:xmax:1000j, 0:ymax:1000j]
+    positions = np.vstack([X.ravel(), Y.ravel()])
+    values = np.vstack([x, y])
+    kernel = stats.gaussian_kde(values)
+    Z = np.reshape(kernel(positions).T, X.shape)
+    output_file("radioVirtPhy/images/"+typeM.lower()+testCase+"RadioCaPhy.html")
+    p = figure(tooltips=[("x", "$x"), ("y", "$y"), ("value", "@image")], toolbar_location='below',
+               x_axis_label='MSE for physical '+typeM+' group',y_axis_label='MSE for virtual '+typeM+' group',
+               plot_width=1000,plot_height=620,hidpi=True)
+    p.axis.axis_label_text_font_size = "22pt"
+    p.axis.axis_label_text_font_style = "bold"
+    p.axis.major_label_text_font_size = "15pt"
+    p.axis.major_label_text_font_style = "bold"
+    p.x_range.range_padding = p.y_range.range_padding = 0
+
+    colormap = cm.get_cmap("cubehelix_r")  # choose any matplotlib colormap here
+    bokehpalette = [clr.rgb2hex(m) for m in colormap(np.arange(colormap.N))]
+
+    color_mapper_lin = LinearColorMapper(palette=bokehpalette)
+    p.image(image=[Z.T], x=0, y=0, dw=xmax, dh=ymax, palette=bokehpalette,level="image")
+    hline0 = Span(location=yThresh[0][0], dimension='width', line_color='red', line_width=8, line_dash='dotted')
+    vline0 = Span(location=xThresh[0][0], dimension='height', line_color='red', line_width=8, line_dash='dotted')
+    p.renderers.extend([hline0])
+    p.renderers.extend([vline0])
+    p.grid.grid_line_width = 0.5
+    color_bar = ColorBar(color_mapper=color_mapper_lin, ticker=BasicTicker(),
+                         label_standoff=12, border_line_color=None, location=(0, 0))
+    p.add_layout(color_bar, 'right')
+    save(p)
+
+## Plots virtVsServ radiography in bokeh
+def plot_virt_serv_radio(metricDf, scored_x, fName,type ):
+    if scored_x.shape[0] > metricDf.shape[0]:
+        mseCut = scored_x.iloc[:metricDf['FailedCall(P)'].shape[0], 0]  # MSE until failedCall length
+        x = mseCut.values
+        y = metricDf['FailedCall(P)'].values
+    else:
+        failedCut = metricDf.iloc[:scored_x.shape[0], 11]  # MSE until failedCall length
+        x = scored_x['Loss_mae'].values
+        y = failedCut.values
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    xmax = x.max()
+    ymax = y.max()
+    X, Y = np.mgrid[0:xmax:1000j, 0:ymax:1000j]
+    positions = np.vstack([X.ravel(), Y.ravel()])
+    values = np.vstack([x, y])
+    kernel = stats.gaussian_kde(values)
+    Z = np.reshape(kernel(positions).T, X.shape)
+    output_file(fName+"RadioVirtServ.html")
+    p = figure(tooltips=[("x", "$x"), ("y", "$y"), ("value", "@image")], toolbar_location='above',
+               x_axis_label='MSE for the virtual '+type+' group', y_axis_label='Failed Calls', plot_width=1000,
+               plot_height=620)
+    p.axis.axis_label_text_font_size = "22pt"
+    p.axis.axis_label_text_font_style = "bold"
+    p.axis.major_label_text_font_size = "15pt"
+    p.axis.major_label_text_font_style = "bold"
+    p.x_range.range_padding = p.y_range.range_padding = 0
+    colormap = cm.get_cmap("cubehelix_r")  # choose any matplotlib colormap here
+    bokehpalette = [clr.rgb2hex(m) for m in colormap(np.arange(colormap.N))]
+    color_mapper = LinearColorMapper(palette=bokehpalette)
+    p.image(image=[Z.T], x=0, y=0, dw=xmax, dh=ymax, palette=bokehpalette, level="image")
+    p.grid.grid_line_width = 0.5
+    color_bar = ColorBar(color_mapper=color_mapper, ticker=BasicTicker(), border_line_color=None, location=(0, 0))
+    vline0 = Span(location=scored_x['Threshold1'][0], dimension='height', line_color='red',
+                  line_width=8,
+                  line_dash='dotted')
+    p.renderers.extend([vline0])
+    p.add_layout(color_bar, 'right')
+    save(p)
+
+

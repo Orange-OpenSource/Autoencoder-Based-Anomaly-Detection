@@ -3,7 +3,10 @@ from utility_classes import lstmObjts
 from utility_classes import predictRes
 import pre_processing
 import bokeh_plotting
+import system_state
+import networkx_plotting
 
+import pickle
 import logging
 import os
 import pickle
@@ -12,7 +15,7 @@ import  numpy as np
 import re
 from keras.models import model_from_json
 
-## Loads training AEs models as long as models weights
+# Loads training AEs models as long as models weights
 def load_models():
     models_ca = []
     models_phy = []
@@ -36,6 +39,31 @@ def load_models():
     models_phy[2].load_weights('Weights/PHYSICALLast/memory.hdf5')  ####cpu : no_max.hdf5
     models_phy[3].load_weights('Weights/PHYSICALLast/fs.hdf5')  ####cpu : no_max.hdf5
     return [models_ca, models_phy]
+
+# Loads sipp statistics
+def load_sipp_df():
+    type = "Sipp/"  # Cadvisor/ Physical/
+    fileSipp = open(type + to_test + '/sipp.csv', 'r')
+    dfT = pd.read_csv(fileSipp, sep=';', header=0, low_memory=False, index_col=None,
+                      error_bad_lines=False)
+    dfT.drop(list(dfT.filter(regex='StartTime')), axis=1, inplace=True)
+    dfT = dfT.iloc[:1460]
+    timeRange = pd.timedelta_range(start='0 minutes', end=str((dfT.shape[0] - 1)) + ' minutes', freq='1min')
+    dfT['ApproxFreq'] = timeRange
+    indexer = pd.TimedeltaIndex(dfT['ApproxFreq'], freq='1min')
+    dfT.set_index(indexer, inplace=True)
+    dfT = dfT.resample('30s').sum()
+    # evenly distributes failed calls across 1 min time-win
+    failed_calls = dfT.iloc[:, 11].values # failed calls are at 11th column
+    for idx, e in enumerate(failed_calls):
+        if idx % 2 == 0 and idx != len(failed_calls) - 1:
+            if e % 2 == 0:
+                failed_calls[idx] = e / 2
+                failed_calls[idx + 1] = e / 2
+            else:
+                failed_calls[idx] = e / 2 + 1
+                failed_calls[idx + 1] = e / 2
+    return dfT
 
 # Utility function to flatten 3D arrays in 2d ones
 def flatten(X):
@@ -70,7 +98,6 @@ def gen_scored(xShape, squaredErrorDf, thresholdS):
     # scored['Threshold3'] = thresholdS[2]
     # scored['Anomaly3'] = scored['Loss_mae'] > scored['Threshold3']
     return scored
-
 
 # prepear the dataset in the format LSTMs accepts
 def lstm_dataset_gen_test(regEx, dataFrame, lookback, oderedColumn, scaler, type):
@@ -110,6 +137,7 @@ def lstm_dataset_gen_test(regEx, dataFrame, lookback, oderedColumn, scaler, type
     X_test_X = np.flip(X_test, 0)
     return X_test_X
 
+# calixxx network interfaces name neutralization
 def reset_Names_phy(columns):
     #columnsNew = []
     for idx,col in enumerate(columns):
@@ -127,6 +155,7 @@ def reset_Names_phy(columns):
         #     columns[idx] = re.sub('cali(.+?)*"', 'calixxx', 'node_network_transmit_packets_total{device="cali0ecf3cd1604"}')
     return columns
 
+# calixxx network interfaces name neutralization wrt latest names
 def reset_Names_phy2(columns):
     #columnsNew = []
     for idx,col in enumerate(columns):
@@ -144,15 +173,11 @@ def reset_Names_phy2(columns):
         #     columns[idx] = re.sub('cali(.+?)*"', 'calixxx', 'node_network_transmit_packets_total{device="cali0ecf3cd1604"}')
     return columns
 
+# Reworks metrics name to keep only significant infos
 def reset_Names_ca(columns):
-    ###print('AAAAA')
     columnsNew = []
     for col in columns:
-        ##print(col)
-        # col= 'container_memory_mapped_file{container="",container_name="",id="/kubepods/besteffort/pod3067e0c2-81d0-47a6-bdc3-2a458ca24b3b",image="",name="",namespace="openims",pod="dns-deployment-6d486c4fb6-slsq6",pod_name="dns-deployment-6d486c4fb6-slsq6"} 3.989504e+06 1581501170989'
-        # col2 = 'container_memory_mapped_file{container="POD",container_name="POD",id="/kubepods/besteffort/pod3067e0c2-81d0-47a6-bdc3-2a458ca24b3b/77e9f81f120a4cd1106add9fe98523d1537ce2f576490fb58ba711496f6e0b38",image="k8s.gcr.io/pause:3.1",name="k8s_POD_dns-deployment-6d486c4fb6-slsq6_openims_3067e0c2-81d0-47a6-bdc3-2a458ca24b3b_4",namespace="openims",pod="dns-deployment-6d486c4fb6-slsq6",pod_name="dns-deployment-6d486c4fb6-slsq6"} 0 1581501168012'
         colNew = col.split('{')[0]
-        # colNew = colNew+'{'+ col.split('pod_name="')[1].split('-')[0]+','+col.split('container=')[1].split(',')[0]+'}'
         if col.split('container=')[1].split(',')[0] != '"POD"' and col.split('container=')[1].split(',')[0] != '""':  # to contour errors on pod.yaml
             colNew = colNew + '{' + col.split('pod="')[1].split('-')[0] + ',' + \
                      col.split('pod="')[1].split('-')[0]
@@ -169,18 +194,16 @@ def reset_Names_ca(columns):
         ## take in account interface for network related metrics
         if len(col.split('device="')) != 1:
             colNew = colNew + ',' + col.split('device="')[1].split('"')[0]
-
-
         colNew = colNew + '}'
-
         columnsNew.append(colNew)
     return columnsNew
 
 
-#logging.basicConfig(level=numeric_level, ...)
+
+logging.basicConfig(level=10)
 
 models_ca, models_phy = load_models()
-to_test = 'pcscfCpuInc_1hx10new' #pcscfCpuInc_1hx10new hssCpuInc_1hx15New overloadLac1312_22_03 pcktLoss16_03
+to_test = 'overloadLac1312_22_03' #pcscfCpuInc_1hx10new hssCpuInc_1hx15New overloadLac1312_22_03 pcktLoss16_03
 file_ca = [open('../SystemState/Cadvisor/'+to_test+'/' + file, 'r') for file in os.listdir('../SystemState/Cadvisor/'+to_test+'/')]# hssCpuInc_1hx15New pcscfCpuInc_1hx10new
 file_phy = [open('../SystemState/Physical/'+to_test+'/' + file, 'r') for file in os.listdir('../SystemState/Physical/'+to_test+'/')]
 ca_dataset =  pre_processing.load_dataset(file_ca[0], 'ca','../SystemState/Cadvisor/MetricsTypes/') # ca_dataset is reversed
@@ -218,7 +241,6 @@ for i in range(4):
 #           -'Anomaly1': True if the sample is an anomaly
 ##       - errorDfSquare: matrix containing squared errors per-feature and per-timestamp
 ##       - predicted: the predicted tensor produced in the training phase
-
 predictedsResTrain_ca = []
 for idx, e in enumerate(lstmObj_ca):
     predicted = models_ca[idx].predict(e.X_train_x)
@@ -242,7 +264,6 @@ for idx, e in enumerate(lstmObj_phy):
     predictedsResTrain_phy.append(predictRes(scored_train_x, errorDfSquare_train_x, predicted))
 
 ## Generate test input tensors for each AE
-
 lstmDatasetsTest_ca = []
 for idx, e in enumerate(groupsRegex_ca):
     X_test_x = lstm_dataset_gen_test(e, ca_dataset, 2, lstmObj_ca[idx].oderedColumn_x, lstmObj_ca[idx].scaler_x,'ca')
@@ -284,6 +305,108 @@ for idx, e in enumerate(lstmDatasetsTest_phy):
     # scored_test_x.set_index(df2.index[0:df2.shape[0] - 2], inplace=True)
     predictedsRes_phy.append(predictRes(scored_test_x, errorDfSquare_test_x, predicted))
 
+#Plots the training MSE through bokeh
+bokeh_plotting.plot_in_bokeh_2Axis(to_test+'mixed',predictedsRes_phy,predictedsRes_ca)
+
+####             ####
+##  RADIOGRAPHIES  ##
+####             ####
+
+# Plots PhyVsVirt radiographies for each resource.
+# Saves bokeh html to "radioVirtPhy/images/"+typeM.lower()+testCase+"RadioCaPhy.html"
+subFolders = ['CPU','network','memory','fs']
+counter = -1
+for predCa, predPhy in zip(predictedsRes_ca,predictedsRes_phy):
+    counter +=1
+    bokeh_plotting.plot_phy_virt_radio(predCa.scored, predPhy.scored, subFolders[counter],to_test)
 
 
-plot_in_bokeh_2Axis(to_test+'mixed',predictedsRes_phy,predictedsRes_ca)
+# Plots VirtVsServ radiographies for each resource.
+# Saves bokeh html to "radioVirtServ/images/"+typeR+to_test+"RadioCaPhy.html"
+dfT = load_sipp_df()
+for e,typeR in zip(predictedsRes_ca,subFolders):
+    bokeh_plotting.plot_virt_serv_radio( dfT, e.scored , 'radioVirtService/images/'+typeR+to_test, typeR)
+
+
+####                            ####
+##    System state generation     ##
+####                            ####
+
+# Computes per-resource and per-layer error classes. Here we deal with container level
+errorClasses_arr_ca_train = []
+for idx, e in enumerate(predictedsResTrain_ca):
+    errorClasses_arr_ca_train.append(system_state.get_clean_classes(e.scored, e.errorDfSquare))
+system_state.names_from_indexes(errorClasses_arr_ca_train,predictedsResTrain_ca)
+
+# Computes per-resource and per-layer error classes. Here we deal with physical level
+errorClasses_arr_phy_train = []
+for idx, e in enumerate(predictedsResTrain_phy):
+    errorClasses_arr_phy_train.append(system_state.get_clean_classes(e.scored, e.errorDfSquare))
+system_state.names_from_indexes(errorClasses_arr_phy_train,predictedsResTrain_phy)
+
+# Computes per-layer error classes aggregating results from the above snippet
+errorClasses_arr_ca_train_c = []
+for el in errorClasses_arr_ca_train:
+    errorClasses_arr_ca_train_c.append([c.copy()  for c in el ])
+errorClasses_ca_train = system_state.get_per_layer_errorClasses_arr(errorClasses_arr_ca_train_c)
+
+errorClasses_arr_phy_train_c = []
+for el in errorClasses_arr_phy_train:
+    errorClasses_arr_phy_train_c.append([c.copy()  for c in el ])
+errorClasses_phy_train = system_state.get_per_layer_errorClasses_arr(errorClasses_arr_phy_train_c)
+
+
+
+errorClasses_all = system_state.merge_virt_phy(errorClasses_ca_train, errorClasses_phy_train)
+
+graph_ca = system_state.get_graph(errorClasses_ca_train, predictedsResTrain_ca[0].errorDfSquare.shape[0], 'ca')
+[e.set_label(' ') for e in graph_ca.get_edges()]
+
+graph_phy = system_state.get_graph(errorClasses_phy_train, predictedsResTrain_phy[0].errorDfSquare.shape[0], 'phy')
+[e.set_label(' ') for e in graph_phy .get_edges()]
+
+graph_all = system_state.get_graph(errorClasses_all,predictedsResTrain_ca[0].errorDfSquare.shape[0],'ca')
+[e.set_label(' ') for e in graph_all .get_edges()]
+
+#################################################
+
+
+# Read used label set or initialize a new one
+dictMapping = {}
+try:
+    file = open('labelsStates/labels', 'rb')
+    dictMapping = pickle.load(file)
+    # Do something with the file
+except IOError:
+    logging.info("First execution, start a fresh label set")
+    dictMapping = {'Nominal': 'S0'}
+finally:
+    file.close()
+countLabels = len(dictMapping)
+
+###   Plots system state graphs through networkx  ###
+
+# Container level.
+# Two versions are plotted: one with states visited more than 2 times and the full graph
+G_ca = system_state.get_purged_grpah(graph_ca,2)
+G_ca_full= system_state.get_purged_grpah(graph_ca,0)
+dictMapping = networkx_plotting.draw_networx_graph_train(G_ca,graph_ca,"GraphCaTrain",predictedsResTrain_ca[0].scored.shape[0]*0.001,'‰',"sfdp",1.5,-0.2,dictMapping)
+dictMapping = networkx_plotting.draw_networx_graph_train(G_ca_full,graph_ca,"GraphCaTrainFull")
+
+# Physical level
+# Two versions are plotted: one with states visited more than 2 times and the full graph
+G_phy = system_state.get_purged_grpah(graph_phy,2)
+G_phy_full= system_state.get_purged_grpah(graph_phy,0)
+networkx_plotting.draw_networx_graph_train(G_phy,graph_phy,"GraphPhyTrain",predictedsResTrain_ca[0].scored.shape[0]*0.001,'‰',"sfdp",2,-0.2)
+networkx_plotting.draw_networx_graph_train(G_phy_full,graph_phy,"GraphPhyTrainFull")
+
+# All in one
+# Two versions are plotted: one with states visited more than 2 times and the full graph
+G_all = system_state.get_purged_grpah(graph_all,2)
+G_all_full = system_state.get_purged_grpah(graph_all,0)
+networkx_plotting.draw_networx_graph_train(G_all,graph_all,"GraphAll",predictedsResTrain_ca[0].scored.shape[0]*0.01,'%',"sfdp",2,-0.35)
+networkx_plotting.draw_networx_graph_train(G_all_full,graph_all,"GraphPhyALFull",57.716,'‰')
+
+## Dumps used labels to disk to generate univocally labels across tests
+with open('labelsStates/labels', 'wb') as file:
+    pickle.dump(dictMapping, file)
