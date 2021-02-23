@@ -328,9 +328,9 @@ for e,typeR in zip(predictedsRes_ca,subFolders):
     bokeh_plotting.plot_virt_serv_radio( dfT, e.scored , 'radioVirtService/images/'+typeR+to_test, typeR)
 
 
-####                            ####
-##    System state generation     ##
-####                            ####
+####                                 ####
+##  Training system state generation   ##
+####                                 ####
 
 # Computes per-resource and per-layer error classes. Here we deal with container level
 errorClasses_arr_ca_train = []
@@ -345,31 +345,38 @@ for idx, e in enumerate(predictedsResTrain_phy):
 system_state.names_from_indexes(errorClasses_arr_phy_train,predictedsResTrain_phy)
 
 # Computes per-layer error classes aggregating results from the above snippet
+
+# Container level
 errorClasses_arr_ca_train_c = []
 for el in errorClasses_arr_ca_train:
     errorClasses_arr_ca_train_c.append([c.copy()  for c in el ])
 errorClasses_ca_train = system_state.get_per_layer_errorClasses_arr(errorClasses_arr_ca_train_c)
 
+# Physical level
 errorClasses_arr_phy_train_c = []
 for el in errorClasses_arr_phy_train:
     errorClasses_arr_phy_train_c.append([c.copy()  for c in el ])
 errorClasses_phy_train = system_state.get_per_layer_errorClasses_arr(errorClasses_arr_phy_train_c)
 
 
-
+# Computes system wide (across both layers and all resources) error classes
 errorClasses_all = system_state.merge_virt_phy(errorClasses_ca_train, errorClasses_phy_train)
 
+# Computes state diagram for the containerization level
 graph_ca = system_state.get_graph(errorClasses_ca_train, predictedsResTrain_ca[0].errorDfSquare.shape[0], 'ca')
 [e.set_label(' ') for e in graph_ca.get_edges()]
 
+# Computes state diagram for the physical level
 graph_phy = system_state.get_graph(errorClasses_phy_train, predictedsResTrain_phy[0].errorDfSquare.shape[0], 'phy')
 [e.set_label(' ') for e in graph_phy .get_edges()]
 
+# Computes system-wide state diagram
 graph_all = system_state.get_graph(errorClasses_all,predictedsResTrain_ca[0].errorDfSquare.shape[0],'ca')
 [e.set_label(' ') for e in graph_all .get_edges()]
 
-#################################################
-
+####                                                                          ####
+##  Plots states diagrams. We used networks library for a better visual result  ##
+####                                                                          ####
 
 # Read used label set or initialize a new one
 dictMapping = {}
@@ -384,28 +391,108 @@ finally:
     file.close()
 countLabels = len(dictMapping)
 
-###   Plots system state graphs through networkx  ###
 
 # Container level.
 # Two versions are plotted: one with states visited more than 2 times and the full graph
 G_ca = system_state.get_purged_grpah(graph_ca,2)
 G_ca_full= system_state.get_purged_grpah(graph_ca,0)
 dictMapping = networkx_plotting.draw_networx_graph_train(G_ca,graph_ca,"GraphCaTrain",predictedsResTrain_ca[0].scored.shape[0]*0.001,'‰',"sfdp",1.5,-0.2,dictMapping)
-dictMapping = networkx_plotting.draw_networx_graph_train(G_ca_full,graph_ca,"GraphCaTrainFull")
+dictMapping = networkx_plotting.draw_networx_graph_train(G_ca_full,graph_ca,"GraphCaTrainFull",predictedsResTrain_ca[0].scored.shape[0]*0.001,'‰',"sfdp",1.5,-0.2,dictMapping)
 
-# Physical level
+# Physical level.
 # Two versions are plotted: one with states visited more than 2 times and the full graph
 G_phy = system_state.get_purged_grpah(graph_phy,2)
 G_phy_full= system_state.get_purged_grpah(graph_phy,0)
-networkx_plotting.draw_networx_graph_train(G_phy,graph_phy,"GraphPhyTrain",predictedsResTrain_ca[0].scored.shape[0]*0.001,'‰',"sfdp",2,-0.2)
-networkx_plotting.draw_networx_graph_train(G_phy_full,graph_phy,"GraphPhyTrainFull")
+networkx_plotting.draw_networx_graph_train(G_phy,graph_phy,"GraphPhyTrain",predictedsResTrain_ca[0].scored.shape[0]*0.001,'‰',"sfdp",2,-0.2,dictMapping)
+networkx_plotting.draw_networx_graph_train(G_phy_full,graph_phy,"GraphPhyTrainFull",predictedsResTrain_ca[0].scored.shape[0]*0.001,'‰',"sfdp",1.5,-0.2,dictMapping)
 
-# All in one
+# System-wide.
 # Two versions are plotted: one with states visited more than 2 times and the full graph
 G_all = system_state.get_purged_grpah(graph_all,2)
 G_all_full = system_state.get_purged_grpah(graph_all,0)
-networkx_plotting.draw_networx_graph_train(G_all,graph_all,"GraphAll",predictedsResTrain_ca[0].scored.shape[0]*0.01,'%',"sfdp",2,-0.35)
-networkx_plotting.draw_networx_graph_train(G_all_full,graph_all,"GraphPhyALFull",57.716,'‰')
+networkx_plotting.draw_networx_graph_train(G_all,graph_all,"GraphAll",predictedsResTrain_ca[0].scored.shape[0]*0.01,'%',"sfdp",2,-0.35,dictMapping)
+networkx_plotting.draw_networx_graph_train(G_all_full,graph_all,"GraphPhyALFull",predictedsResTrain_ca[0].scored.shape[0]*0.001,'‰',"sfdp",1.5,-0.2,dictMapping)
+
+####                            ####
+##  Test system state generation  ##
+####                            ####
+
+# Computes per-resource and per-layer error classes. Here we deal with container level
+errorClasses_arr_ca_test = []
+for idx, e in enumerate(predictedsRes_ca):
+    errorClasses_arr_ca_test.append(system_state.get_clean_classes(e.scored, e.errorDfSquare))
+system_state.names_from_indexes(errorClasses_arr_ca_test,predictedsRes_ca)
+
+# Computes per-resource and per-layer error classes. Here we deal with physical level
+errorClasses_arr_phy_test = []
+for idx, e in enumerate(predictedsRes_phy):
+    errorClasses_arr_phy_test.append(system_state.get_clean_classes(e.scored, e.errorDfSquare))
+system_state.names_from_indexes(errorClasses_arr_phy_test,predictedsRes_phy)
+
+# Computes per-layer error classes aggregating results from the above snippet
+
+# Container level
+errorClasses_arr_ca_test_c = []
+for el in errorClasses_arr_ca_test:
+    errorClasses_arr_ca_test_c.append([c.copy()  for c in el ])
+errorClasses_ca_test = system_state.get_per_layer_errorClasses_arr(errorClasses_arr_ca_test_c)
+
+# Physical level
+errorClasses_arr_phy_test_c = []
+for el in errorClasses_arr_phy_test:
+    errorClasses_arr_phy_test_c.append([c.copy()  for c in el ])
+errorClasses_phy_test = system_state.get_per_layer_errorClasses_arr(errorClasses_arr_phy_test_c)
+
+# Computes system wide (across both layers and all resources) error classes
+errorClasses_all_test = system_state.merge_virt_phy(errorClasses_ca_test, errorClasses_phy_test)
+
+# Computes state diagram for the containerization level
+graph_ca_test = system_state.get_graph(errorClasses_ca_test, predictedsRes_ca[0].errorDfSquare.shape[0], 'ca')
+[e.set_label(' ') for e in graph_ca_test.get_edges()]
+
+# Computes state diagram for the physical level
+graph_phy_test = system_state.get_graph(errorClasses_phy_test, predictedsRes_phy[0].errorDfSquare.shape[0], 'phy')
+[e.set_label(' ') for e in graph_phy_test.get_edges()]
+
+# Computes system-wide state diagram
+graph_all_test = system_state.get_graph(errorClasses_all_test, predictedsRes_phy[0].errorDfSquare.shape[0], 'phy')
+[e.set_label(' ') for e in graph_all_test.get_edges()]
+
+####                                                                          ####
+##  Plots states diagrams. We used networks library for a better visual result  ##
+####                                                                          ####
+
+
+# Container level.
+# Two versions are plotted: one with states visited more than 2 times and the full graph
+G_ca_test = system_state.get_purged_grpah(graph_ca_test,2)
+G_ca_test_full= system_state.get_purged_grpah(graph_ca_test,0)
+networkx_plotting.draw_networx_graph(G_ca_test,graph_ca_test,"GraphCatest" +to_test,predictedsRes_ca[0].scored.shape[0]*0.01,'%','sfdp',2,-0.2,dictMapping)
+networkx_plotting.draw_networx_graph(G_ca_test_full,graph_ca_test,"GraphCatestFull" +to_test,predictedsRes_ca[0].scored.shape[0]*0.01,'%','sfdp',2,-0.2,dictMapping)
+
+# Physical level.
+# Two versions are plotted: one with states visited more than 2 times and the full graph
+G_phy_test = system_state.get_purged_grpah(graph_phy_test,2)
+G_phy_test_full= system_state.get_purged_grpah(graph_phy_test,0)
+networkx_plotting.draw_networx_graph(G_phy_test,graph_phy_test,"GraphPhyTest"+to_test,predictedsRes_ca[0].scored.shape[0]*0.01,'%','sfdp',1.5,-0.2,dictMapping)
+networkx_plotting.draw_networx_graph(G_phy_test_full,graph_phy_test,"GraphPhytestFull" +to_test,predictedsRes_ca[0].scored.shape[0]*0.01,'%','sfdp',2,-0.2,dictMapping)
+
+# System-wide.
+# Two versions are plotted: one with states visited more than 2 times and the full graph
+G_all_test = system_state.get_purged_grpah(graph_all_test,2)
+G_all_test_full= system_state.get_purged_grpah(graph_all_test,0)
+networkx_plotting.draw_networx_graph(G_all_test,graph_all_test,"GraphALLTest"+to_test,predictedsRes_ca[0].scored.shape[0]*0.01,'%','twopi',5.5,-0.3,dictMapping)
+networkx_plotting.draw_networx_graph(G_all_test_full,graph_all_test,"GraphALLTestFull" +to_test,predictedsRes_ca[0].scored.shape[0]*0.01,'%','sfdp',2,-0.2,dictMapping)
+
+
+
+
+
+
+
+
+
+
 
 ## Dumps used labels to disk to generate univocally labels across tests
 with open('labelsStates/labels', 'wb') as file:
