@@ -136,4 +136,6 @@ Weights/
 radioVirtPhy/
 radioVirtService/
 Sipp/
+.idea/
 *.hdf5
+*.html

@@ -16,10 +16,10 @@ import matplotlib.pyplot as plt
 import os
 import seaborn as sns
 from sklearn.preprocessing import MinMaxScaler
-from keras.layers import Dense, LSTM, RepeatVector, TimeDistributed
-from keras.callbacks import ModelCheckpoint, TensorBoard
+from keras.layers import RepeatVector
+from keras.callbacks import ModelCheckpoint
 from keras import Sequential
-from keras.layers import Dense, LSTM
+from keras.layers import  LSTM
 import re
 from keras.callbacks import EarlyStopping
 from keras.layers.core import Dropout
@@ -31,9 +31,7 @@ def create_model(feature_size, lookback):
     #feature_size = feature_size_cpu
     #lookback = 2
     hidden_layer_size = int(feature_size * 0.8)
-    print(hidden_layer_size)
     hidden_layer_size2 = int(feature_size * 0.6)
-    print(hidden_layer_size2)
     lstm_autoencoder = Sequential()
     # Encoder
     lstm_autoencoder.add(
@@ -66,7 +64,6 @@ def gen_scored_train(squaredErrorDf, layer):
 
     return [thresholds, scored]
 def LSTM_dataset_gen(regEx, dataFrameArray, lookback):
-    print(regEx)
     scaler = MinMaxScaler([0, 1])
     columnToUse_X = dataFrameArray[0].filter(regex=regEx)
     columnToUse_X = columnToUse_X.filter(regex='openims')
@@ -103,12 +100,10 @@ def LSTM_dataset_gen(regEx, dataFrameArray, lookback):
 def LSTM_dataset_gen_test(regEx, dataFrame, lookback, oderedColumn, scaler, feature_size):
     columnToUseT = dataFrame.filter(regex=regEx)  # use same columns as in training phase
     columnToUseT = columnToUseT.filter(regex='openims')
-    #print(columnToUseT.columns.values)
     colsTest = reset_Names(columnToUseT.columns)
     colsTest = [el.replace('"', '') for el in colsTest]
     columnToUseT.columns = colsTest
     columnToUseT = columnToUseT[oderedColumn]
-    print(columnToUseT.columns.values)
     input_feature_rescaled_normalized = scaler.transform(columnToUseT)
 
     ##LSTM format training
@@ -120,10 +115,14 @@ def LSTM_dataset_gen_test(regEx, dataFrame, lookback, oderedColumn, scaler, feat
         X_test_A_look.append(t)
 
     X = np.array(X_test_A_look)
-    #    print(len(X))
     X_test = X.reshape(X.shape[0], lookback, feature_size)
     X_test_X = np.flip(X_test, 0)
     return X_test_X
+def save_models(models, level):
+    for idx, m in enumerate(models):
+        model_json = m.to_json()
+        with open('models/'+level+'/'+str(idx)+'.json', "w") as json_file:
+            json_file.write(model_json)
 
 type = "../SystemState/Cadvisor/"  # Cadvisor/ Physical/
 
@@ -131,7 +130,6 @@ df_arr = []
 ## Load file archtypes
 filesType = open('../SystemState/Cadvisor/MetricsTypes/ca.txt', 'r')
 ### per file name-types
-typesFileNames = []
 names = []
 types = []
 ### per file type indexes
@@ -140,8 +138,6 @@ gaugesIndexes = []
 untypedIndexes = []
 summaryIndexes = []
 
-print(filesType.name.split('/')[2].split('.')[0])
-typesFileNames.append(filesType.name.split('/')[1].split(".")[0])
 lines = filesType.readlines()
 tempTypes = []
 tempNames = []
@@ -209,7 +205,6 @@ for file_handler in fileMetrics:  # iterates on days files
         for j in range(0, len(gaugesTemp[i])):
             if '_total' in gaugesTemp[i][j]:
                 df[gaugesTemp[i][j]] = df[gaugesTemp[i][j]].diff()
-                # print(gaugesTemp[i][j])
     df = df.fillna(value=0)  # first elem will be Nan after diff
     reverse_df = df.iloc[::-1]  # reverse df for lookback
     df_arr.append(reverse_df)
@@ -253,16 +248,11 @@ for idx,m in enumerate(models):
     es = EarlyStopping(monitor='loss', patience=10, mode='min')
     callbacks_list = []
     callbacks_list.append(checkpoint)
-    # callbacks_list.append(tb)
     callbacks_list.append(es)
-    lstm_autoencoder_history.append(m.fit(lstmobjts[idx].X_train_x, lstmobjts[idx].X_train_x, epochs=2,
+    lstm_autoencoder_history.append(m.fit(lstmobjts[idx].X_train_x, lstmobjts[idx].X_train_x, epochs=2000,
                                             batch_size=int(lstmobjts[idx].X_train_x.shape[0] / len(df_arr)), verbose=2,
                                             callbacks=callbacks_list).history)
 
-def save_models(models, level):
-    for idx, m in enumerate(models):
-        model_json = m.to_json()
-        with open('models/'+level+'/'+str(idx)+'.json', "w") as json_file:
-            json_file.write(model_json)
+
 save_models(models, 'ca')
 
