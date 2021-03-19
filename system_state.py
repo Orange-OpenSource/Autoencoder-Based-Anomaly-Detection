@@ -3,16 +3,29 @@ from utility_classes import ErrorClass
 import pydot
 import re
 import networkx as nx
-# Takes a list of typed error classes and adds feature names in errordfsquare basing on features indexes
-def names_from_indexes(errorClasses_arr_x, predictedRes): 
+
+def names_from_indexes(errorClasses_arr_x, predictedRes):
+    '''
+    Takes a list of typed error classes and adds feature names in errordfsquare 'patternString'
+    basing on features indexes.
+
+        errorClasses_arr_x      list of ErrorClass objects
+        predictedRes            predictRes object to retrieve features names
+    '''
     for index,e in enumerate(errorClasses_arr_x):
         for clasS in e:
             patternInt = clasS.pattern
             patternString = [predictedRes[index].errorDfSquare.iloc[:,u].name for u in patternInt]
             clasS.set_patternString(patternString)
 
-#
 def get_clean_classes(scored, errorDfSquare):
+    '''
+    Takes AEs output and computes ErrorClasses. Permutations of indexes are considered the same class
+    as defined in R' equivalence relation of reference paper
+
+        scored              AE output
+        errorDfSquare       DataFrame with squared MSE
+    '''
     perEccr = []  # perEccr[i] list of %contribution to MSI for i-th anomaly
     timeIndexes = []  # time index of most contributing error feature
     errIndexes = []  # sorted index of most error contirubuting feature
@@ -97,8 +110,15 @@ def get_clean_classes(scored, errorDfSquare):
         cleanClasses[i].set_freq(len(cleanClasses[i].timeIndex) / len(timeIndexes) * 100)
     return cleanClasses
 
-# Takes two time steps and returns classes indexes in given list
+
 def get_classes(i,j,classList):
+    '''
+    Takes two time steps and returns classes indexes in given ErrorClass list
+    :param i:               First time-step
+    :param j:               Second time-step
+    :param classList:       ErrorClass list
+    :return:                Classes indexes in given ErrorClass list
+    '''
     i_class_index = -1
     j_class_index = -1
     for idx, e in enumerate(classList):
@@ -108,8 +128,14 @@ def get_classes(i,j,classList):
             j_class_index = idx
     return  [i_class_index, j_class_index]
 
-#
+
 def get_per_layer_errorClasses_arr(errorClasses_arr_x): # pass a copy of the array
+    '''
+    Gets per-group lists of ErrorClasses and merges all ErrorClasses into a per-layer list
+    To not modify per-group ErrorClass list, please pass a list of copies
+
+        errorClasses_arr_x      Copy of the list of per-layer list of ErrorClasses
+    '''
     errorClasses_ca_train = [e.copy() for e in errorClasses_arr_x[0]] # start with cpu related classes
     current_times = [elem for c in errorClasses_arr_x[0] for elem in c.timeIndex]
     for i in range(len(errorClasses_arr_x)):
@@ -155,8 +181,13 @@ def get_per_layer_errorClasses_arr(errorClasses_arr_x): # pass a copy of the arr
     [errorClasses_ca_train.remove(e)for e in to_del_elem]
     return errorClasses_ca_train
 
-#
-def reset_features_name(names,type):
+
+def reset_features_name(names):
+    '''
+    Change metrics name to <computational_unit+resource> pattern
+    :param names:       a list of metrics to rename
+    :return:            the new names
+    '''
     cpu = 'cpu|context_switch|temp'
     memory = 'edac|vm_stat|memory'
     disk = 'disk|filesystem|filefd'
@@ -185,6 +216,12 @@ def reset_features_name(names,type):
 
 #
 def merge_virt_phy(errorClasses_ca_x,errorClasses_phy_x):
+    '''
+
+    :param errorClasses_ca_x:
+    :param errorClasses_phy_x:
+    :return:
+    '''
     errorClasses_phy_x = [e.copy() for e in errorClasses_phy_x]
     errorClasses_all_x = [e.copy() for e in errorClasses_ca_x]
     current_times = [elem for c in errorClasses_all_x for elem in c.timeIndex]
@@ -217,10 +254,22 @@ def merge_virt_phy(errorClasses_ca_x,errorClasses_phy_x):
 
 #
 def get_node_dimentions(node):
+    '''
+
+    :param node:
+    :return:
+    '''
     return len(node.timeIndex)
 
 #
 def get_graph(errorClasses_arr_x,size,type): # list of errorClasses, index of the list (0 for cpu etc...), size the number of samples
+    '''
+    Computes the pydot state diagram basing on the input ErrorClass list
+
+    :param errorClasses_arr_x:      ErrorClass list to define degraded states
+    :param size:                    Total number of considered timestamps
+    :return:
+    '''
     pen_width = 0.1
     timSteps_train = [eI for c in errorClasses_arr_x for eI in c.timeIndex]
     timSteps_train.sort()
@@ -231,7 +280,7 @@ def get_graph(errorClasses_arr_x,size,type): # list of errorClasses, index of th
         to_reset = []
         for it in e.patternString:
             to_reset.append(it)#predictedsRes.errorDfSquare.iloc[:,it].name)
-        resetted = reset_features_name(to_reset,type)
+        resetted = reset_features_name(to_reset)
         if len(graph.get_node(resetted[:-2])) == 0:
             height = get_node_dimentions(e)
             node_to_add = pydot.Node(resetted[:-2], xlabel=height)
@@ -247,16 +296,16 @@ def get_graph(errorClasses_arr_x,size,type): # list of errorClasses, index of th
                 classes = get_classes(e,timSteps_train[idx+1],errorClasses_arr_x)
                 te_reset0 = [elem for elem in errorClasses_arr_x[classes[0]].patternString]
                 te_reset1 = [elem for elem in errorClasses_arr_x[classes[1]].patternString]
-                if not reset_features_name(te_reset0,type) == reset_features_name(te_reset1,type):
+                if not reset_features_name(te_reset0) == reset_features_name(te_reset1):
                     countstrans2_train = countstrans2_train + 1
-                    label = reset_features_name(te_reset0,type)[:-2]+'->'+reset_features_name(te_reset1,type)[:-2]
-                    edge = pydot.Edge(reset_features_name(te_reset0,type)[:-2],
-                                      reset_features_name(te_reset1,type)[:-2],penwidth= pen_width,
+                    label = reset_features_name(te_reset0)[:-2]+'->'+reset_features_name(te_reset1)[:-2]
+                    edge = pydot.Edge(reset_features_name(te_reset0)[:-2],
+                                      reset_features_name(te_reset1)[:-2],penwidth= pen_width,
                                       label=label)
                     if not label in  [e.get_label() for e in graph.get_edges()] :
                         graph.add_edge(edge)
                     else:
-                        curr_edge = graph.get_edge(reset_features_name(te_reset0,type)[:-2],reset_features_name(te_reset1,type)[:-2])[0]
+                        curr_edge = graph.get_edge(reset_features_name(te_reset0)[:-2],reset_features_name(te_reset1)[:-2])[0]
                         curr_edge.set_penwidth(curr_edge.get_penwidth()+0.2)
 
     for i in range(size):
@@ -264,39 +313,43 @@ def get_graph(errorClasses_arr_x,size,type): # list of errorClasses, index of th
             curr_class = get_classes(i, i-1, errorClasses_arr_x)
             if not curr_class[1] == -1: #add transition towards the nominal state
                 te_reset0 = [elem for elem in errorClasses_arr_x[curr_class[1]].patternString]
-                label = reset_features_name(te_reset0, type)[:-2] + '->' + 'Nominal'
-                edge = pydot.Edge(reset_features_name(te_reset0,type)[:-2],
+                label = reset_features_name(te_reset0)[:-2] + '->' + 'Nominal'
+                edge = pydot.Edge(reset_features_name(te_reset0)[:-2],
                                   'Nominal',label=label,penwidth= pen_width)
                 if not label in [e.get_label() for e in graph.get_edges()]:
                     graph.add_edge(edge)
                 else:
-                    curr_edge = graph.get_edge(reset_features_name(te_reset0, type)[:-2], 'Nominal')[0]
+                    curr_edge = graph.get_edge(reset_features_name(te_reset0)[:-2], 'Nominal')[0]
                     curr_edge.set_penwidth(curr_edge.get_penwidth() + 0.2)
                 countstrans2_train = countstrans2_train + 1
             if i+1 in timSteps_train: # add transition from the nominal state
                 to_go_to = [elem for elem in errorClasses_arr_x[get_classes(i, i+1, errorClasses_arr_x)[1]].patternString]
-                label = 'Nominal' + '->' + reset_features_name(to_go_to, type)[:-2]
-                edge = pydot.Edge('Nominal',reset_features_name(to_go_to,type)[:-2],label=label,penwidth= pen_width)
+                label = 'Nominal' + '->' + reset_features_name(to_go_to)[:-2]
+                edge = pydot.Edge('Nominal',reset_features_name(to_go_to)[:-2],label=label,penwidth= pen_width)
                 if not label in [e.get_label() for e in graph.get_edges()]:
                     graph.add_edge(edge)
                 else:
-                    curr_edge = graph.get_edge('Nominal',reset_features_name(to_go_to,type)[:-2])[0]
+                    curr_edge = graph.get_edge('Nominal',reset_features_name(to_go_to)[:-2])[0]
                     curr_edge.set_penwidth(curr_edge.get_penwidth() + 0.2)
                 countstrans2_train = countstrans2_train + 1
     return graph
 
 #
 def get_purged_grpah(grpah, cut):
+    '''
+    Purge nodes we just go in for cut timesteps
+
+    :param grpah:       The graph to cut
+    :param cut:         The timestamp treshold
+    :return:            The networkx purged graph
+    '''
     G=nx.nx_pydot.from_pydot(grpah)
     nodes = list(grpah.get_nodes())
     to_remove = []
     for idx,node in enumerate(nodes):
-        # ##print(idx)
-        ###print(node.get_name())
         #purge nodes we just go in from nominal and then we go back to nominal after 1 timestep
-        if node.get('xlabel') <=cut :#and list(G.successors(node.get_name())) == ['Nominal'] and list(G.predecessors(node.get_name())) == ['Nominal']:
+        if node.get('xlabel') <=cut :
             to_remove.append(node.get_name())
-            # ##print(node.get_name())
     G.remove_nodes_from(to_remove)
     return G
 

@@ -38,7 +38,6 @@ def reset_Names_phy2(columns):
     return columns
 
 def reset_Names_ca(columns):
-    ###print('AAAAA')
     columnsNew = []
     for col in columns:
         ##print(col)

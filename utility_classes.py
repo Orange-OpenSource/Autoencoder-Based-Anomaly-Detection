@@ -1,5 +1,5 @@
 class lstmObjts:
-    def __init__(self, X_train_x, oderedColumn_x, scaler_x, c):
+    def __init__(self, X_train_x, oderedColumn_x, scaler_x, feature_size_x):
         self.X_train_x = X_train_x
         self.oderedColumn_x = oderedColumn_x
         self.scaler_x = scaler_x

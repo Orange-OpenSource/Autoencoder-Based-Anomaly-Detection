@@ -486,14 +486,6 @@ networkx_plotting.draw_networx_graph(G_all_test_full,graph_all_test,"GraphALLTes
 
 
 
-
-
-
-
-
-
-
-
 ## Dumps used labels to disk to generate univocally labels across tests
 with open('labelsStates/labels', 'wb') as file:
     pickle.dump(dictMapping, file)
