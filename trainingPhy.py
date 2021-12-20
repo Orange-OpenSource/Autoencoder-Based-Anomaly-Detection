@@ -1,3 +1,17 @@
+/*
+* Software Name : SYRROCA
+* Version: 1.0
+* SPDX-FileCopyrightText: Copyright (c) 2021 Orange
+* SPDX-License-Identifier: BSD-3-Clause
+*
+* This software is distributed under the BSD 3-Clause "New" or "Revised" License,
+* the text of which is available at https://spdx.org/licenses/BSD-3-Clause.html
+* or see the "license.txt" file for more details.
+*
+* Author: Alessio Diamanti
+*/
+
+
 # -*- coding: utf-8 -*-
 """
 Created on Tue May 12 09:44:40 2020
